@@ -4,13 +4,19 @@
 #include <stdlib.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <pthread.h>
+#include <wait.h>
 
 #define PORT 8080
+
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
 int main(int argc, char const *argv[])
 {
     int server_fd, new_socket; long valread;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
+    pid_t pid[50];
 
     char *hello = "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: 12\n\nHello world!";
 
@@ -39,6 +45,9 @@ int main(int argc, char const *argv[])
         perror("In listen");
         exit(EXIT_FAILURE);
     }
+
+    int i = 0;
+
     while(1)
     {
         if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0)
@@ -47,10 +56,32 @@ int main(int argc, char const *argv[])
             exit(EXIT_FAILURE);
         }
 
-        char buffer[30000] = {0};
-        valread = read( new_socket , buffer, 30000);
-        write(new_socket , hello , strlen(hello));
-        close(new_socket);
+        printf("Accepted connection\n");
+
+        int pid_c = 0;
+
+        if ((pid_c = fork()) == 0)
+        {
+            printf("Locking\n");
+            pthread_mutex_lock(&lock);
+            char buffer[30000] = {0};
+            valread = read( new_socket , buffer, 30000);
+            pthread_mutex_unlock(&lock);
+            sleep(1);
+            write(new_socket , hello , strlen(hello));
+            printf("Replied\n");
+            close(new_socket);
+        }
+        else
+        {
+            pid[i++] = pid_c;
+            if (i >= 49)
+            {
+                i = 0;
+                while (i < 50) waitpid(pid[i++], NULL, 0);
+                i = 0;
+            }
+        }
     }
     return 0;
 }
